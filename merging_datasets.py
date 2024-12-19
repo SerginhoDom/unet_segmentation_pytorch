@@ -5,14 +5,13 @@ import cv2
 from pycocotools import mask as maskUtils
 
 # Параметры
-ANNOTATION_FILE = '../nail_segmentation/dataset_COCO/images_test/_annotations.coco.json'  # путь к вашему COCO JSON
-OUTPUT_MASK_DIR = '../nail_segmentation/dataset_COCO/labels_test'  # путь к папке для сохранения масок
+ANNOTATION_FILE = '../nail_segmentation/dataset/images_test/_annotations.coco.json'  # путь к вашему COCO JSON
+OUTPUT_MASK_DIR = '../nail_segmentation/dataset/labels_test'  # путь к папке для сохранения масок
 IMAGE_SIZE = (640, 640)  # ширина и высота изображений
 
 # Создаем папку для масок, если она не существует
 os.makedirs(OUTPUT_MASK_DIR, exist_ok=True)
 
-# Функция для преобразования аннотаций COCO в маски
 def create_masks_from_coco(annotation_file, output_dir, image_size):
     # Загружаем COCO JSON
     with open(annotation_file, 'r') as f:
@@ -41,34 +40,32 @@ def create_masks_from_coco(annotation_file, output_dir, image_size):
         for annotation in annotations:
             segmentation = annotation['segmentation']
             
-            # Проверяем, что сегментация существует
-            if isinstance(segmentation, list):
-                # Если сегментация представлена как многоугольник (Polygon)
+            if isinstance(segmentation, list):  # Многоугольники
                 for poly in segmentation:
-                    points = np.array(poly).reshape(-1, 2)  # Преобразуем в массив координат
-                    points = np.round(points * [width / 640, height / 640]).astype(np.int32)  # Масштабируем координаты
-
-                    # Проверим координаты, чтобы убедиться, что они в пределах изображения
-                    if np.any(points < 0) or np.any(points[:, 0] >= width) or np.any(points[:, 1] >= height):
-                        continue  # Пропускаем этот многоугольник, если координаты некорректны
+                    points = np.array(poly).reshape(-1, 2)
+                    points = np.round(points * [width / 640, height / 640]).astype(np.int32)
                     
-                    # Заливаем полигон белым (255)
+                    if np.any(points < 0) or np.any(points[:, 0] >= width) or np.any(points[:, 1] >= height):
+                        print(f"Пропуск многоугольника с некорректными координатами в изображении {image_id}")
+                        continue
+                    
                     cv2.fillPoly(mask, [points], 255)
             
-            # Если сегментация в формате RLE (Run-Length Encoding)
-            elif isinstance(segmentation, dict):
+            elif isinstance(segmentation, dict):  # RLE
                 rle = maskUtils.frPyObjects(segmentation, height, width)
-                rle_mask = maskUtils.decode(rle) * 255  # Преобразуем RLE в бинарную маску
-                mask = np.maximum(mask, rle_mask)  # Объединяем маску с уже существующими сегментами
+                rle_mask = maskUtils.decode(rle) * 255
+                mask = np.maximum(mask, rle_mask)
         
-        # Проверим, если маска не пустая
         if np.sum(mask) == 0:
             print(f"Маска пустая для изображения {image_id}. Пропускаем.")
             continue
         
-        # Сохраняем маску с тем же именем, что и у изображения
-        output_mask_file = os.path.join(output_dir, f'{images_info[image_id].split(".")[0]}.png')  # Имя маски совпадает с именем изображения
-        cv2.imwrite(output_mask_file, mask)
+        # Используем имя исходного изображения
+        original_filename = images_info[image_id]
+        output_mask_file = os.path.join(output_dir, original_filename)
+        
+        # Сохраняем маску в формате JPEG
+        cv2.imwrite(output_mask_file, mask, [cv2.IMWRITE_JPEG_QUALITY, 95])
         print(f'Маска сохранена: {output_mask_file}')
 
 # Пример использования
